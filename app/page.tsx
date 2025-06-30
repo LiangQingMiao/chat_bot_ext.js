@@ -1,95 +1,79 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client";
+import React, { useState, useRef } from 'react';
 
-export default function Home() {
+export default function ChatPage() {
+  const [messages, setMessages] = useState<{ role: 'user' | 'bot'; content: string }[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const userMessage = { role: 'user', content: input };
+    setMessages((msgs) => [...msgs, userMessage]);
+    setInput('');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: input }),
+      });
+      const data = await res.json();
+      console.log('前端收到：', data);
+      let reply = data.reply;
+      if (!reply) {
+        if (data.raw) {
+          reply = JSON.stringify(data.raw);
+        } else if (data.error) {
+          reply = data.error;
+        } else {
+          reply = '机器人未能回复，请稍后再试。';
+        }
+      }
+      setMessages((msgs) => [
+        ...msgs,
+        { role: 'bot' as 'bot', content: reply as string }
+      ]);
+    } catch {
+      setMessages((msgs) => [...msgs, { role: 'bot', content: '网络错误，请重试。' }]);
+    }
+    setLoading(false);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') sendMessage();
+  };
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+    <div style={{ maxWidth: 500, margin: '40px auto', padding: 20, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #eee', color: '#000' }}>
+      <h2 style={{ textAlign: 'center' }}>通义千问对话机器人</h2>
+      <div style={{ minHeight: 300, marginBottom: 16, overflowY: 'auto', border: '1px solid #eee', borderRadius: 4, padding: 10, background: '#fafafa' }}>
+        {messages.map((msg, idx) => (
+          <div key={idx} style={{ textAlign: msg.role === 'user' ? 'right' : 'left', margin: '8px 0' }}>
+            <span style={{ display: 'inline-block', padding: '6px 12px', borderRadius: 16, background: msg.role === 'user' ? '#d1eaff' : '#f0f0f0' }}>
+              {msg.role === 'user' ? '我：' : '机器人：'}{msg.content}
+            </span>
+          </div>
+        ))}
+        {loading && <div style={{ color: '#888', textAlign: 'left' }}>机器人正在输入...</div>}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="请输入你的问题..."
+          style={{ flex: 1, padding: 8, borderRadius: 4, border: '1px solid #ccc' }}
+          disabled={loading}
         />
-        <ol>
-          <li>
-            Get started by editing <code>app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <button onClick={sendMessage} disabled={loading || !input.trim()} style={{ padding: '8px 16px', borderRadius: 4, background: '#1677ff', color: '#fff', border: 'none' }}>
+          发送
+        </button>
+      </div>
     </div>
   );
 }
