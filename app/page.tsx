@@ -239,7 +239,7 @@ export default function Home() {
         {/* 聊天主区域 */}
         <div className="chat-container" style={{ borderRadius: 15, padding: 20, background: theme === 'dark' ? 'rgba(30,30,30,0.95)' : 'rgba(255,255,255,0.95)', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', minHeight: 600 }}>
           {/* 聊天消息区 */}
-          <div ref={chatRef} className="chat-messages" style={{ flex: 1, overflowY: 'auto', position: 'relative', background: theme === 'dark' ? 'rgba(40,40,40,0.9)' : '#fff', borderRadius: 10, marginBottom: 16, padding: 10 }}>
+          <div ref={chatRef} className="chat-messages" style={{ height: 600, overflowY: 'scroll', position: 'relative', background: theme === 'dark' ? 'rgba(40,40,40,0.9)' : '#fff', borderRadius: 10, marginBottom: 16, padding: 10 }}>
             {messages.map((msg, idx) => (
               <div key={idx} style={{
                 margin: '15px 0',

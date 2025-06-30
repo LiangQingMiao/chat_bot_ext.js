@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFile } from 'fs/promises';
+// import { readFile } from 'fs/promises';
 import path from 'path';
 
 const API_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
 const API_KEY = 'sk-06097ab4ae604cda83c36d730d3711ef';
+
+// demo.txt 内容直接写在这里
+const DEMO = `【任务】：收拾书包
+【步骤】：
+1. 准备好明天要用的课本和作业本。
+2. 把文具盒、橡皮、尺子等学习用品放进书包。
+3. 检查是否有需要家长签字的作业。
+4. 如果有剪刀等尖锐物品，请让大人帮忙收拾。
+5. 拉好拉链，把书包放在门口方便明天带走。
+【注意】：遇到危险物品一定要请大人帮忙哦！`;
 
 // 通义千问API调用
 async function qwen_llm(prompt: string): Promise<string> {
@@ -34,8 +44,7 @@ async function qwen_llm(prompt: string): Promise<string> {
 
 // 主要agent函数
 async function agent(message: string): Promise<string> {
-  const demoPath = path.join(process.cwd(), 'app', 'api', 'chat', 'demo.txt');
-  const demo = await readFile(demoPath, 'utf-8');
+  // 直接用 DEMO 字符串
   const prompt = `
 # Role: 日常任务规划专家
 
@@ -64,7 +73,7 @@ async function agent(message: string): Promise<string> {
 作为角色 "日常任务规划专家"，我严格遵守上述规则，使用中文与用户对话，让我不再孤独。
 
 ###一个案例：
-${demo}
+${DEMO}
 
 你现在要规划的任务是：${message}
   `;
