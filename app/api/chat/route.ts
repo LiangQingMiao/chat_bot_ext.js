@@ -7,44 +7,36 @@ const API_KEY = 'sk-06097ab4ae604cda83c36d730d3711ef';
 
 // 通义千问API调用
 async function qwen_llm(prompt: string): Promise<string> {
-  try {
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
-    };
-    const body = {
-      model: 'qwen-max-2024-09-19',
-      input: {
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      },
-    };
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
-    }
-    const json = await response.json();
-    return json.output.text;
-  } catch (error: any) {
-    console.error('调用LLM API时发生错误:', error);
-    return `抱歉，我遇到了一些问题：${error.message}`;
-  }
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_KEY}`,
+  };
+  const body = {
+    model: 'qwen-max-2024-09-19',
+    input: {
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    },
+  };
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  const json = await response.json();
+  console.log('通义API返回：', JSON.stringify(json, null, 2));
+  return json.output?.text || '';
 }
 
 // 主要agent函数
 async function agent(message: string): Promise<string> {
-  try {
-    const demoPath = path.join(process.cwd(), 'app', 'api', 'chat', 'demo.txt');
-    const demo = await readFile(demoPath, 'utf-8');
-    const prompt = `
+  const demoPath = path.join(process.cwd(), 'app', 'api', 'chat', 'demo.txt');
+  const demo = await readFile(demoPath, 'utf-8');
+  const prompt = `
 # Role: 日常任务规划专家
 
 ## Profile:
@@ -75,13 +67,8 @@ async function agent(message: string): Promise<string> {
 ${demo}
 
 你现在要规划的任务是：${message}
-    `;
-    const response = await qwen_llm(prompt);
-    return response;
-  } catch (error: any) {
-    console.error('Agent处理消息时发生错误:', error);
-    return `抱歉，我在处理你的请求时遇到了问题：${error.message}`;
-  }
+  `;
+  return await qwen_llm(prompt);
 }
 
 export async function POST(req: NextRequest) {

@@ -11,11 +11,19 @@ const moods = [
 ];
 
 type ChatRole = "user" | "bot" | "system";
-type ChatMessage = { role: ChatRole; content: string };
+type ChatMessage = { role: ChatRole; content: string; time?: string };
 type Achievement = { text: string; date: string; time: number };
 type Moment = { src: string; title: string };
 
+function formatTime(date: Date) {
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function Home() {
+  // SSR安全：所有依赖window/localStorage/Date的内容都用useEffect初始化
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => { setIsClient(true); }, []);
+
   // 聊天相关
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -23,24 +31,44 @@ export default function Home() {
   const chatRef = useRef<HTMLDivElement>(null);
 
   // 主题切换
-  const [theme, setTheme] = useState<string>(typeof window !== 'undefined' ? (localStorage.getItem('theme') || 'light') : 'light');
+  const [theme, setTheme] = useState<string>('light');
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
+    if (!isClient) return;
+    const t = localStorage.getItem('theme') || 'light';
+    setTheme(t);
+    document.documentElement.setAttribute("data-theme", t);
+  }, [isClient]);
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    if (isClient) {
+      localStorage.setItem('theme', next);
+      document.documentElement.setAttribute("data-theme", next);
+    }
+  };
 
   // 心情
-  const [mood, setMood] = useState<string>(typeof window !== 'undefined' ? (localStorage.getItem('currentMood') || moods[0].value) : moods[0].value);
+  const [mood, setMood] = useState<string>(moods[0].value);
   useEffect(() => {
-    localStorage.setItem('currentMood', mood);
-  }, [mood]);
+    if (!isClient) return;
+    const m = localStorage.getItem('currentMood') || moods[0].value;
+    setMood(m);
+  }, [isClient]);
+  useEffect(() => {
+    if (isClient) localStorage.setItem('currentMood', mood);
+  }, [mood, isClient]);
 
   // 成就
-  const [achievements, setAchievements] = useState<Achievement[]>(typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('achievements') || '[]') : []);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [achievementInput, setAchievementInput] = useState("");
   useEffect(() => {
-    localStorage.setItem('achievements', JSON.stringify(achievements));
-  }, [achievements]);
+    if (!isClient) return;
+    const arr = JSON.parse(localStorage.getItem('achievements') || '[]');
+    setAchievements(arr);
+  }, [isClient]);
+  useEffect(() => {
+    if (isClient) localStorage.setItem('achievements', JSON.stringify(achievements));
+  }, [achievements, isClient]);
 
   // 开心时刻
   const [moments, setMoments] = useState<Moment[]>([
@@ -52,13 +80,14 @@ export default function Home() {
 
   // 聊天滚动到底部
   useEffect(() => {
-    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+    if (isClient) chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, loading, isClient]);
 
-  // 发送消息
+  // 发送消息（非流式，清理reply内容）
   const sendMessage = async () => {
     if (!input.trim()) return;
-    const userMessage: ChatMessage = { role: "user", content: input };
+    const now = isClient ? new Date() : undefined;
+    const userMessage: ChatMessage = { role: "user", content: input, time: now ? formatTime(now) : '' };
     setMessages((msgs) => [...msgs, userMessage]);
     setInput("");
     setLoading(true);
@@ -69,22 +98,19 @@ export default function Home() {
         body: JSON.stringify({ message: input }),
       });
       const data = await res.json();
-      let reply = data.reply;
-      if (!reply) {
-        if (data.raw) reply = JSON.stringify(data.raw);
-        else if (data.error) reply = data.error;
-        else reply = "机器人未能回复，请稍后再试。";
-      }
-      setMessages((msgs) => [...msgs, { role: "bot", content: reply }]);
+      let reply = data.reply || '';
+      // 只保留中文、数字和常用中文标点
+      reply = reply.replace(/[^\u4e00-\u9fa5\d，。！？、；："''（）【】《》——…\s]/g, '');
+      setMessages((msgs) => [...msgs, { role: "bot", content: reply, time: isClient ? formatTime(new Date()) : '' }]);
     } catch {
-      setMessages((msgs) => [...msgs, { role: "system", content: "网络错误，请重试。" }]);
+      setMessages((msgs) => [...msgs, { role: "system", content: "网络错误，请重试。", time: isClient ? formatTime(new Date()) : '' }]);
     }
     setLoading(false);
   };
 
   // 语音播放
   const playText = (text: string, button: HTMLButtonElement) => {
-    if (!window.speechSynthesis) return;
+    if (!isClient || !window.speechSynthesis) return;
     if (button.dataset.playing === "true") {
       window.speechSynthesis.pause();
       button.dataset.playing = "false";
@@ -110,7 +136,7 @@ export default function Home() {
   // 成就相关
   const addAchievement = () => {
     if (!achievementInput.trim()) return;
-    setAchievements([{ text: achievementInput, date: new Date().toLocaleDateString('zh-CN'), time: Date.now() }, ...achievements]);
+    setAchievements([{ text: achievementInput, date: isClient ? new Date().toLocaleDateString('zh-CN') : '', time: isClient ? Date.now() : 0 }, ...achievements]);
     setAchievementInput("");
   };
   const deleteAchievement = (idx: number) => {
@@ -133,18 +159,43 @@ export default function Home() {
   };
 
   // 日期时间
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
+    if (!isClient) return;
+    setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isClient]);
 
-  // 主题切换
-  const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+  // 聊天气泡动画样式
+  const bubbleAnim = {
+    animation: 'bubbleIn 0.5s cubic-bezier(.68,-0.55,.27,1.55)',
+  };
+
+  // SSR安全：未到客户端挂载前不渲染依赖window/localStorage/Date的内容
+  if (!isClient) return <div style={{ minHeight: '100vh', background: 'linear-gradient(120deg, #fccb90 0%, #d57eeb 100%)' }} />;
 
   // 渲染
   return (
     <div style={{ minHeight: "100vh", background: theme === 'dark' ? "linear-gradient(120deg, #2c3e50 0%, #3498db 100%)" : "linear-gradient(120deg, #fccb90 0%, #d57eeb 100%)", fontFamily: 'Microsoft YaHei, sans-serif', padding: 0, margin: 0 }}>
+      <style>{`
+        @keyframes bubbleIn {
+          0% { opacity: 0; transform: scale(0.3); }
+          50% { transform: scale(1.05); }
+          70% { transform: scale(0.9); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .chat-bubble {
+          transition: box-shadow 0.2s;
+        }
+        .chat-bubble:hover {
+          box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+        }
+        @media (max-width: 900px) {
+          .main-grid { grid-template-columns: 1fr; }
+          .side-hide { display: none !important; }
+        }
+      `}</style>
       {/* 主题切换按钮 */}
       <div style={{ position: "fixed", top: 20, right: 20, zIndex: 1000 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -230,7 +281,12 @@ export default function Home() {
                 </div>
               </div>
             ))}
-            {loading && <div style={{ color: '#888', textAlign: 'left' }}>机器人正在输入...</div>}
+            {loading && (
+              <div style={{ color: '#888', textAlign: 'left', margin: 12 }}>
+                <span>小光正在输入</span>
+                <span className="dotting">...</span>
+              </div>
+            )}
           </div>
           {/* 输入区 */}
           <div className="input-area" style={{ display: 'flex', gap: 15, padding: 15, background: 'rgba(255,255,255,0.95)', borderRadius: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.1)', position: 'relative' }}>
@@ -240,7 +296,7 @@ export default function Home() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') sendMessage(); }}
               placeholder="和我说说话吧..."
-              style={{ flex: 1, padding: '15px 20px', border: '3px solid #FFE66D', borderRadius: 15, fontSize: 16, background: 'rgba(255,255,255,0.9)' }}
+              style={{ flex: 1, padding: '15px 20px', border: '3px solid #FFE66D', borderRadius: 18, fontSize: 16, background: 'rgba(255,255,255,0.9)', outline: 'none', boxShadow: '0 2px 8px rgba(255,107,107,0.08)', color: '#8B5C2A' }}
               disabled={loading}
             />
             <button
@@ -254,9 +310,13 @@ export default function Home() {
         <div style={{ background: theme === 'dark' ? "rgba(40,40,40,0.9)" : "rgba(255,255,255,0.9)", borderRadius: 20, padding: 20, boxShadow: "0 4px 15px rgba(0,0,0,0.1)", display: 'flex', flexDirection: 'column', gap: 20, width: 250, boxSizing: 'border-box' }}>
           <div style={{ background: theme === 'dark' ? "linear-gradient(135deg, #2c3e50, #34495e)" : "linear-gradient(135deg, #A8E6CF, #DCEDC1)", padding: 15, borderRadius: 15, marginBottom: 15, color: theme === 'dark' ? '#fff' : '#2d3436' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 32, fontWeight: 'bold', color: '#FF6B6B', marginBottom: 5 }}>{now.toLocaleTimeString('zh-CN')}</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 5 }}>{now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
-              <div style={{ color: '#666' }}>{now.toLocaleDateString('zh-CN', { weekday: 'long' })}</div>
+              {now && (
+                <>
+                  <div style={{ fontSize: 32, fontWeight: 'bold', color: '#FF6B6B', marginBottom: 5 }}>{now.toLocaleTimeString('zh-CN')}</div>
+                  <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 5 }}>{now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                  <div style={{ color: '#666' }}>{now.toLocaleDateString('zh-CN', { weekday: 'long' })}</div>
+                </>
+              )}
             </div>
           </div>
           <div style={{ background: theme === 'dark' ? "linear-gradient(135deg, #2980b9, #3498db)" : "linear-gradient(135deg, #A8E6CF, #DCEDC1)", padding: 15, borderRadius: 15, marginBottom: 15, color: theme === 'dark' ? '#fff' : '#2d3436' }}>
@@ -275,7 +335,7 @@ export default function Home() {
                 placeholder="记录一个新的成就..."
                 style={{ flex: 1, padding: 8, border: '2px solid #FFE66D', borderRadius: 10, fontSize: 14, width: 128, maxWidth: 128, height: 35, boxSizing: 'border-box' }}
               />
-              <button onClick={addAchievement} style={{ padding: '8px 12px', fontSize: 14, minWidth: 45, maxWidth: 50, height: 35, borderRadius: 10, background: 'linear-gradient(135deg, #FF6B6B, #FFE66D)', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>添加</button>
+              <button onClick={addAchievement} style={{ padding: '8px 16px', fontSize: '1em', minWidth: 0, maxWidth: 'none', height: 35, borderRadius: 10, background: 'linear-gradient(135deg, #FF6B6B, #FFE66D)', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>添加</button>
             </div>
             <div style={{ maxHeight: 300, overflowY: 'auto' }}>
               {achievements.map((a, i) => (
