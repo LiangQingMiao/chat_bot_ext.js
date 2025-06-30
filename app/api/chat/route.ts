@@ -3,8 +3,8 @@ import { readFile } from 'fs/promises';
 import path from 'path';
 
 const API_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
-// const API_KEY = 'sk-06097ab4ae604cda83c36d730d3711ef';
-const API_KEY = process.env.TONGYI_API_KEY || '';
+const API_KEY = 'sk-06097ab4ae604cda83c36d730d3711ef';
+// const API_KEY = process.env.TONGYI_API_KEY || '';
 // 通义千问API调用
 async function qwen_llm(prompt: string): Promise<string> {
   const headers = {
