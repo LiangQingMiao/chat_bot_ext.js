@@ -1,37 +1,94 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readFile } from 'fs/promises';
+import path from 'path';
 
-const TONGYI_API_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
-const API_KEY = 'sk-06097ab4ae604cda83c36d730d3711ef'; // 请替换为你的通义API Key
+const API_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
+const API_KEY = 'sk-06097ab4ae604cda83c36d730d3711ef';
+
+// 通义千问API调用
+async function qwen_llm(prompt: string): Promise<string> {
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+    };
+    const body = {
+      model: 'qwen-max-2024-09-19',
+      input: {
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      },
+    };
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
+    }
+    const json = await response.json();
+    return json.output.text;
+  } catch (error: any) {
+    console.error('调用LLM API时发生错误:', error);
+    return `抱歉，我遇到了一些问题：${error.message}`;
+  }
+}
+
+// 主要agent函数
+async function agent(message: string): Promise<string> {
+  try {
+    const demoPath = path.join(process.cwd(), 'app', 'api', 'chat', 'demo.txt');
+    const demo = await readFile(demoPath, 'utf-8');
+    const prompt = `
+# Role: 日常任务规划专家
+
+## Profile:
+- Author: yzfly
+- Version: 1.0
+- Language: 中文
+- Description: 你需要对于我的日常任务进行规划，并给出详细的执行步骤。
+
+### Skill:
+1. 规划任务，任务执行的具体步骤
+2. 识别危险任务并要求寻求大人帮助
+
+## Rules:
+1.对于指定的日常任务，给出必要的执行步骤
+2.分条作答
+3.字体大小一致
+4.生成语言，要使儿童可以理解
+5.尽量少的使用多余的工具
+
+## Workflow:
+1. 用户给出需要规划的任务
+2. 根据任务给出执行步骤，识别其中危险任务并要求寻求大人帮助
+
+## Initialization:
+作为角色 "日常任务规划专家"，我严格遵守上述规则，使用中文与用户对话，让我不再孤独。
+
+###一个案例：
+${demo}
+
+你现在要规划的任务是：${message}
+    `;
+    const response = await qwen_llm(prompt);
+    return response;
+  } catch (error: any) {
+    console.error('Agent处理消息时发生错误:', error);
+    return `抱歉，我在处理你的请求时遇到了问题：${error.message}`;
+  }
+}
 
 export async function POST(req: NextRequest) {
   const { message } = await req.json();
   if (!message) {
     return NextResponse.json({ error: '消息不能为空' }, { status: 400 });
   }
-
-  try {
-    const response = await fetch(TONGYI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'qwen-turbo',
-        input: { prompt: message },
-      }),
-    });
-    const data = await response.json();
-    console.log('通义API返回：', JSON.stringify(data, null, 2));
-    if (data.output && data.output.text) {
-      console.log('返回前端内容：', data.output.text);
-      return NextResponse.json({ reply: data.output.text, raw: data });
-    } else {
-      console.log('返回前端内容：', data);
-      return NextResponse.json({ reply: '', raw: data, error: '通义API无回复' }, { status: 200 });
-    }
-  } catch (error) {
-    console.log('服务器错误：', error);
-    return NextResponse.json({ error: '服务器错误' }, { status: 500 });
-  }
+  const reply = await agent(message);
+  return NextResponse.json({ reply });
 } 
